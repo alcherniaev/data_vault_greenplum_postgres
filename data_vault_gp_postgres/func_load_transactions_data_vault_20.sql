@@ -77,7 +77,9 @@ AS $$
  									,s.amount as amount
  									,s."date" as transaction_dtm
  									,md5(s.product_company::text) as company_sk
- 							
+									,lag(md5(concat(s.amount, s."date", md5(transaction_type::text), md5(s.product_company::text), s.operator)), 1, '0') over (partition by s.id order by s.stamp) prev_row_hash
+								from stage.transations_changes s) sr
+						where row_hash <> prev_row_hash
  							 )
  							
  							
