@@ -12,7 +12,7 @@ transactions_sk text not null
 )
 distributedd by (transactions_sk);
 
-CREATE OR REPLACE FUNCTION rdv_2.load_transactions()
+CREATE OR REPLACE FUNCTION rdv_2.load_hs_transactions()
 	RETURNS bool
 	LANGUAGE plpgsql
 	VOLATILE
@@ -105,9 +105,52 @@ AS $$
 				
 				get diagnostics v_rc = row_count;
 			raise notice '% rows loaded to stage.m_hs_transactions', v_rc; 	
- 							 )
+
+			/*наполняем хабы*/
+
+			 insert into rdv_2.h_transactions
+             ( transactions_sk
+             , transactions_bk
+             , src_system
+             , first_load_dtm
+             )
+        select s.transactions_sk
+             , min(s.transactions_bk) transactions_bk
+             , min(s.src_system) src_system
+             , min(s.src_change_dtm) first_load_dtm
+          from stage.m_hs_transactions s
+		  where not exists (select t.transactions_sk from rdv_2.h_transactions t where t.transactions_sk = s.transactions_sk)
+          group by s.transactions_sk;
+ 							 
  							
- 							
+ 			/*наполняем сателлиты*/
+         insert into rdv_2.hs_transactions
+              ( transactions_sk
+              , src_system
+              , src_change_dtm
+              , src_action_type
+              , row_hash
+              , amount
+              , transaction_dtm
+              , type_sk
+              , company_sk
+              )
+         select s.transactions_sk
+              , s.src_system
+              , s.src_change_dtm
+              , s.src_action_type
+              , s.row_hash
+              , s.amount
+              , s.transaction_dtm
+              , s.type_sk
+              , s.company_sk
+           from stage.m_hs_transactions s;
+                                           
+           get diagnostics v_rc = row_count;
+         raise notice '% rows loaded to rdv_2.hs_transactions',v_rc;
+
+		 raise notice '% function rdv_2.load_hs_transactions finished successful',v_rc;		
+		 return true;		
  							
  	end
-    
+    $$;
