@@ -79,7 +79,32 @@ AS $$
  									,md5(s.product_company::text) as company_sk
 									,lag(md5(concat(s.amount, s."date", md5(transaction_type::text), md5(s.product_company::text), s.operator)), 1, '0') over (partition by s.id order by s.stamp) prev_row_hash
 								from stage.transations_changes s) sr
-						where row_hash <> prev_row_hash
+						where row_hash <> prev_row_hash),
+				last_hs as (select tr.transactions_sk
+									,t.row_hash
+									,row_number() over (partition by t.transactions_sk order by src_change_dtm desc) as rn
+							from rdv_2.hs_transactions t ) tr
+							where tr.rn = 1)
+
+
+			select s.transactions_sk
+					,s.transactions_bk
+					,s.src_system
+					,s.src_change_dtm
+					,s.src_action_type
+					,s.row_hash
+					,s.amount
+					,s.transaction_dtm
+					,s.type_sk
+					,s.company_sk
+			from stg s
+			left join last_hs hs on hs.transactions_sk = s.transactions_sk
+						and hs.row_hash = s.row_hash
+						and s.rn = 1
+			where hs.transactions_sk is null;
+				
+				get diagnostics v_rc = row_count;
+			raise notice '% rows loaded to stage.m_hs_transactions', v_rc; 	
  							 )
  							
  							
